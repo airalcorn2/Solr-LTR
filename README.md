@@ -142,7 +142,7 @@ curl -X POST -H 'Content-type:application/json' --data-binary '{
 We're now ready to re-index our data:
 
 ```bash
-bin/post -c test /home/malcorn/solr-in-action/example-docs/ch6/tweets.xml
+bin/post -c test /path/to/tweets.xml
 ```
 
 # <a name="Learning-to-Rank"></a>**<p style="text-align: center;">Learning to Rank</p>**
@@ -212,6 +212,12 @@ Next, we need to push the model features and the model specification to Solr. In
     "name" : "max_sim",
     "class" : "org.apache.solr.ltr.feature.SolrFeature",
     "params" : { "q" : "{!dismax qf='text text_tfidf'}${text}" }
+  },
+  {
+    "store" : "my_efi_feature_store",
+    "name" : "original_score",
+    "class" : "org.apache.solr.ltr.feature.OriginalScoreFeature",
+    "params" : {}
   }
 ]
 ```
@@ -219,6 +225,8 @@ Next, we need to push the model features and the model specification to Solr. In
 `store` tells Solr where to store the feature, `name` is the name of the feature, `class` specifies which [Java class will handle the feature](https://lucene.apache.org/solr/guide/6_6/learning-to-rank.html#LearningToRank-Featureengineering), and `params` provides additional information about the feature required by its Java class. In the case of a [`SolrFeature`](https://lucene.apache.org/solr/6_6_0//solr-ltr/org/apache/solr/ltr/feature/SolrFeature.html), you need to provide the query. `{!dismax qf=text_tfidf}${text_a}` tells Solr to search the `text_tfidf` field with the contents of `text_a` using the [`DisMaxQParser`](https://lucene.apache.org/solr/guide/6_6/the-dismax-query-parser.html). The reason we're using the DisMax parser instead of the seemingly more obvious [`FieldQParser`](https://lucene.apache.org/solr/guide/6_6/other-parsers.html#OtherParsers-FieldQueryParser) (e.g., `{!field f=text_tfidf}${text_a}`) is because the `FieldQParser` automatically converts multi-term queries to "phrases" (i.e., it converts something like "the cat in the hat" into, effectively, "the_cat_in_the_hat", rather than "the", "cat", "in", "the", "hat"). This `FieldQParser` behavior (which seems like a rather strange default to me) ended up [giving me quite a headache](https://issues.apache.org/jira/browse/SOLR-11386), but I eventually found a solution with `DisMaxQParser`.
 
 `{!dismax qf='text text_tfidf'}${text}` tells Solr to search both the `text` and `text_tfidf` fields with the contents of `text` and then take the max of those two scores. While this feature doesn't really make sense in this context because we're already using similarities from both fields as features, it demonstrates how such a feature could be implemented. For example, imagine that the documents in your corpus are linked to, at most, five other sources of text data. It might make sense to incorporate that information during a search, and taking the max over multiple similarity scores is one way of doing that.
+
+Finally, [`OriginalScoreFeature`](http://lucene.apache.org/solr/6_5_1/solr-ltr/org/apache/solr/ltr/feature/OriginalScoreFeature.html) "returns the original score that the document had before performing the reranking". This feature is necessary for returning the results in their original ranking when extracting features (**note**: `OriginalScoreFeature` [is broken](https://issues.apache.org/jira/browse/SOLR-11164) on Solr versions prior to 7.1).
 
 To push the features to Solr, we run the following command:
 
@@ -244,21 +252,23 @@ Next, we'll save the following model specification in `my_efi_model.json`:
     { "name" : "tfidf_sim_b" },
     { "name" : "bm25_sim_a" },
     { "name" : "bm25_sim_b" },
-    { "name" : "max_sim" }
+    { "name" : "max_sim" },
+    { "name" : "original_score" }
   ],
   "params" : {
     "weights" : {
-      "tfidf_sim_a" : 1.0,
-      "tfidf_sim_b" : 1.0,
-      "bm25_sim_a" : 1.0,
-      "bm25_sim_b" : 1.0,
-      "max_sim" : 0.5
+      "tfidf_sim_a" : 0.0,
+      "tfidf_sim_b" : 0.0,
+      "bm25_sim_a" : 0.0,
+      "bm25_sim_b" : 0.0,
+      "max_sim" : 0.0,
+      "original_score" : 1.0
     }
   }
 }
 ```
 
-`store` specifies [where the features the model is using are stored](https://lucene.apache.org/solr/guide/6_6/learning-to-rank.html#LearningToRank-Lifecycle), `name` is the name of the model, `class` specifies which Java class will implement the model, `features` is a list of the model features, and `params` provides additional information required by the model's Java class. To start off with, we'll use the [`LinearModel`](https://lucene.apache.org/solr/6_6_1/solr-ltr/org/apache/solr/ltr/model/LinearModel.html), which simply takes a weighted sum of the feature values to generate a score. Obviously, the provided weights are arbitrary. To find  better weights, we'll need to extract training data from Solr. I'll go over this topic in more depth in the [RankNet section](#RankNet).
+`store` specifies [where the features the model is using are stored](https://lucene.apache.org/solr/guide/6_6/learning-to-rank.html#LearningToRank-Lifecycle), `name` is the name of the model, `class` specifies which Java class will implement the model, `features` is a list of the model features, and `params` provides additional information required by the model's Java class. To start off with, we'll use the [`LinearModel`](https://lucene.apache.org/solr/6_6_1/solr-ltr/org/apache/solr/ltr/model/LinearModel.html), which simply takes a weighted sum of the feature values to generate a score. Here, we assign a weight of 0.0 to each feature except `original_score`, which is assigned a weight of 1.0. This weighting scheme will ensure the results are returned in their original order. To find  better weights, we'll need to extract training data from Solr. I'll go over this topic in more depth in the [RankNet section](#RankNet).
 
 We can push the model to Solr with:
 
@@ -268,7 +278,7 @@ curl -XPUT 'http://localhost:8983/solr/test/schema/model-store' --data-binary "@
 
 And now we're ready to run our first LTR query:
 
-<a href="http://localhost:8983/solr/test/query?q=historic north&rq={!ltr model=my_efi_model efi.text_a=historic efi.text_b=north efi.text='historic north'}&fl=id,score,[features]">`http://localhost:8983/solr/test/query?q=historic north&rq={!ltr model=my_efi_model efi.text_a=historic efi.text_b=north efi.text='historic north'}&fl=id,score,[features]`</a>
+<a href="http://localhost:8983/solr/test/query?q=historic north&df=text&rq={!ltr model=my_efi_model efi.text_a=historic efi.text_b=north efi.text='historic north'}&fl=id,score,[features]">`http://localhost:8983/solr/test/query?q=historic north&df=text&rq={!ltr model=my_efi_model efi.text_a=historic efi.text_b=north efi.text='historic north'}&fl=id,score,[features]`</a>
 
 You should see something like:
 
@@ -276,21 +286,21 @@ You should see something like:
 {
   "responseHeader":{
     "status":0,
-    "QTime":101,
+    "QTime":1,
     "params":{
       "q":"historic north",
+      "df":"text",
       "fl":"id,score,[features]",
       "rq":"{!ltr model=my_efi_model efi.text_a=historic efi.text_b=north efi.text='historic north'}"}},
-  "response":{"numFound":1,"start":0,"maxScore":3.0671878,"docs":[
+  "response":{"numFound":1,"start":0,"maxScore":1.8617721,"docs":[
       {
         "id":"1",
-        "score":3.0671878,
-        "[features]":"tfidf_sim_a=0.53751516,tfidf_sim_b=0.0,bm25_sim_a=0.84322417,bm25_sim_b=0.84322417,max_sim=1.6864483"}]
-  }
-}
+        "score":1.8617721,
+        "[features]":"tfidf_sim_a=0.35304558,tfidf_sim_b=0.0,bm25_sim_a=0.93088603,bm25_sim_b=0.93088603,max_sim=1.8617721,original_score=1.8617721"}]
+  }}
 ```
 
-Referring back to the request, `q=historic north` is the query used to fetch the initial results (using BM25 in this case), which are then re-ranked with the LTR model. `rq` is where all of the LTR parameters are provided. `efi` stands for "[external feature information](https://lucene.apache.org/solr/guide/6_6/learning-to-rank.html#LearningToRank-ExternalFeatureInformation)", which allows you to specify features at query time. In this case, we're populating the `text_a` argument with the term `historic`, the `text_b` argument with the term `north`, and the `text` argument with the multi-term query `'historic north'` (note, this is not being treated as a "phrase"). `fl=id,score,[features]` tells Solr to include the `id`, `score`, and model features in the results. You can verify that the feature values are correct by performing the associated search in the "Query" interface of the Solr Admin UI. For example, typing `text_tfidf:historic` in the `q` text box and typing `score` in the `fl` text box and then clicking the "Execute Query" button should return a value of 0.53751516.
+Referring back to the request, `q=historic north` is the query used to fetch the initial results (using BM25 in this case), which are then re-ranked with the LTR model. `df=text` specifies the default field for Solr to search. `rq` is where all of the LTR parameters are provided. `efi` stands for "[external feature information](https://lucene.apache.org/solr/guide/6_6/learning-to-rank.html#LearningToRank-ExternalFeatureInformation)", which allows you to specify features at query time. In this case, we're populating the `text_a` argument with the term `historic`, the `text_b` argument with the term `north`, and the `text` argument with the multi-term query `'historic north'` (note, this is not being treated as a "phrase"). `fl=id,score,[features]` tells Solr to include the `id`, `score`, and model features in the results. You can verify that the feature values are correct by performing the associated search in the "Query" interface of the Solr Admin UI. For example, typing `text_tfidf:historic` in the `q` text box and typing `score` in the `fl` text box and then clicking the "Execute Query" button should return a value of 0.35304558.
 
 # <a name="RankNet"></a>**<p style="text-align: center;">RankNet</p>**
 
