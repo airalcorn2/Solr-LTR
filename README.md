@@ -348,11 +348,9 @@ try:
     json = simplejson.loads(response.text)
 except simplejson.JSONDecodeError:
     print(q_id)
-    return
 
 if "error" in json:
     print(q_id)
-    return
 
 # Extract the features.
 results_features = []
