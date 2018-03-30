@@ -608,7 +608,7 @@ and it's pushed the same as before:
 curl -XPUT 'http://localhost:8983/solr/test/schema/model-store' --data-binary "@/path/to/my_ranknet_model.json" -H 'Content-type:application/json'
 ```
 
-And we can perform an LTR query like before, except this time we'll use `ltr_model=my_ranknet_model`.
+We can also perform an LTR query like before, except this time we'll use `ltr_model=my_ranknet_model`.
 
 <a href="http://localhost:8983/solr/test/query?q=historic north&df=text&rq={!ltr model=my_ranknet_model efi.text_a=historic efi.text_b=north efi.text='historic north'}&fl=id,score,[features]">`http://localhost:8983/solr/test/query?q=historic north&df=text&rq={!ltr model=my_ranknet_model efi.text_a=historic efi.text_b=north efi.text='historic north'}&fl=id,score,[features]`</a>
 
