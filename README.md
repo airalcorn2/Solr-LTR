@@ -326,9 +326,6 @@ text_b = row["text_b"].strip().lower()
 text = " ".join([text_a, text_b])
 
 url = "http://localhost:8983/solr/test/query"
-# We only re-rank one document when extracting features because we want to be
-# able to compare the LTR model to the BM25 ranking. Setting reRankDocs=1
-# ensures the original ranking is maintained.
 url += "?q={0}&df=text&rq={{!ltr model=my_efi_model ".format(text)
 url += "efi.text_a='{0}' efi.text_b='{1}' efi.text='{2}'}}".format(text_a, text_b, text)
 url += "&fl=id,score,[features]&rows={1}".format(text, RERANK)
