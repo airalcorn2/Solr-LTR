@@ -307,7 +307,7 @@ Referring back to the request, `q=historic north` is the query used to fetch the
 
 For LTR systems, linear models are generally trained using what's called a "[pointwise](https://en.wikipedia.org/wiki/Learning_to_rank#Pointwise_approach)" approach, which is where documents are considered individually (i.e., the model asks, "Is this document relevant to the query or not?"); however, pointwise approaches are generally [not well-suited](https://www.quora.com/What-are-the-differences-between-pointwise-pairwise-and-listwise-approaches-to-Learning-to-Rank) for LTR problems. [RankNet](http://icml.cc/2015/wp-content/uploads/2015/06/icml_ranking.pdf) is a neural network that uses a "[pairwise](https://en.wikipedia.org/wiki/Learning_to_rank#Pairwise_approach)" approach, which is where documents with a known relative preference are considered in pairs (i.e., the model asks, "Is document A more relevant than document B for the query or not?"). RankNet is available in Solr [as of version 7.3](https://github.com/apache/lucene-solr/commit/c5938f79e540f81b6d61560d324b150a5efd7011) (you can verify your version of Solr includes RankNet by inspecting `/path/to/solr-<version>/solr/dist/solr-ltr-{version}-SNAPSHOT.jar` and looking for `NeuralNetworkModel.class` under `/org/apache/solr/ltr/model/`). [I've also implemented RankNet in Keras](https://github.com/airalcorn2/RankNet) for model training. It's worth noting that [LamdaMART](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/LambdaMART_Final.pdf) might be more appropriate for your particular search application. However, RankNet can be trained quickly on a GPU using Keras, which makes it a good solution for search problems where only one document is relevant to any given query. For a nice (technical) overview of RankNet, LambdaRank, and LambdaMART, see [this paper](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/MSR-TR-2010-82.pdf) by Chris Burges from (at the time) Microsoft Research.
 
-Unfortunately, the [suggested method](https://lucene.apache.org/solr/guide/learning-to-rank.html#extracting-features) of feature extraction in Solr [is painfully slow](http://mail-archives.apache.org/mod_mbox/lucene-solr-user/201710.mbox/%3CCAMVOmhGUHZ-HU=g6o4+oyxob=bcWxQAg2BvW0Yj_sj=1bP0RRQ@mail.gmail.com%3E) ([other Solr users seem to agree it could be faster](http://mail-archives.apache.org/mod_mbox/lucene-solr-user/201710.mbox/%3C1508833512139-0.post@n3.nabble.com%3E)). Even when making the requests in parallel, it took me almost three days to extract features for ~200,000 queries. I think a better approach might be to do something like [this](http://computergodzilla.blogspot.com/2015/01/calculate-cosine-similarity-using.html), where you index the queries and then calculate the similarities between the "documents" (which consist of the true documents and queries), but this is really something that should be baked into Solr. Anyway, here is some example Python code for extracting features from Solr using queries:
+Unfortunately, the [suggested method](https://lucene.apache.org/solr/guide/learning-to-rank.html#extracting-features) of feature extraction in Solr [is painfully slow](http://mail-archives.apache.org/mod_mbox/lucene-solr-user/201710.mbox/%3CCAMVOmhGUHZ-HU=g6o4+oyxob=bcWxQAg2BvW0Yj_sj=1bP0RRQ@mail.gmail.com%3E) ([other Solr users seem to agree it could be faster](http://mail-archives.apache.org/mod_mbox/lucene-solr-user/201710.mbox/%3C1508833512139-0.post@n3.nabble.com%3E)). Even when making the requests in parallel, it took me almost three days to extract features for ~200,000 queries. I think a better approach might be to do something like [this](http://computergodzilla.blogspot.com/2015/01/calculate-cosine-similarity-using.html), where you index the queries and then calculate the similarities between the "documents" (which consist of the true documents and queries), but this is really something that should be baked into Solr. Anyway, here is some Python template code for extracting features from Solr using queries (**note**: this code cannot be run as is):
 
 ```python
 import numpy as np
@@ -401,7 +401,7 @@ for rank_file in rank_files:
 
 ranks = np.array(ranks)
 total_queries = len(ranks)
-print("Total Queries: {0}".format(total_docs))
+print("Total Queries: {0}".format(total_queries))
 print("Top 1: {0}".format((ranks == 1).sum() / total_queries))
 print("Top 3: {0}".format((ranks <= 3).sum() / total_queries))
 print("Top 5: {0}".format((ranks <= 5).sum() / total_queries))
@@ -433,7 +433,7 @@ new_ranks = []
 for i in range(n_test):
     start = i * RERANK
     end = start + RERANK
-    scores = preds[start:end, 1]
+    scores = preds[start:end, 1]example
     score_ranks = rankdata(-scores)
     old_rank = np.argmax(test_y[start:end])
     new_rank = score_ranks[old_rank]
