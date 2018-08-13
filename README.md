@@ -433,7 +433,7 @@ new_ranks = []
 for i in range(n_test):
     start = i * RERANK
     end = start + RERANK
-    scores = preds[start:end, 1]example
+    scores = preds[start:end, 1]
     score_ranks = rankdata(-scores)
     old_rank = np.argmax(test_y[start:end])
     new_rank = score_ranks[old_rank]
