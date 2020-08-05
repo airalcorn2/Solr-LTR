@@ -1,6 +1,8 @@
 # **<p style="text-align: center;">From Zero to Learning to Rank in Apache Solr</p>**
 
-This tutorial describes how to implement a modern [learning to rank](https://en.wikipedia.org/wiki/Learning_to_rank) (LTR) system in [Apache Solr](http://lucene.apache.org/solr/). The intended audience is people who have zero Solr experience, but who are comfortable with machine learning and information retrieval concepts. I was one of those people only a couple of months ago, and I found it extremely challenging to get up and running with the Solr materials available on the internet. This is my attempt at writing the tutorial I wish I had discovered.
+This tutorial describes how to implement a modern [learning to rank](https://en.wikipedia.org/wiki/Learning_to_rank) (LTR) system in [Apache Solr](http://lucene.apache.org/solr/).
+The intended audience is people who have zero Solr experience, but who are comfortable with machine learning and information retrieval concepts.
+I was one of those people only a couple of months ago, and I found it extremely challenging to get up and running with the Solr materials available on the internet. This is my attempt at writing the tutorial I wish I had discovered.
 
 # **<p style="text-align: center;">Table of Contents</p>**
 
@@ -12,7 +14,8 @@ This tutorial describes how to implement a modern [learning to rank](https://en.
 
 # <a name="Setting-Up-Solr"></a>**<p style="text-align: center;">Setting Up Solr</p>**
 
-Firing up a vanilla Solr instance on Fedora is actually pretty straightforward. First, download the Solr source tarball (so, one containing "src") from [here](http://lucene.apache.org/solr/mirrors-solr-latest-redir.html) and extract it to a reasonable location. Next, `cd` into the Solr directory:
+Firing up a vanilla Solr instance on Fedora is actually pretty straightforward.
+First, download the Solr source tarball (so, one containing "src") from [here](http://lucene.apache.org/solr/mirrors-solr-latest-redir.html) and extract it to a reasonable location. Next, `cd` into the Solr directory:
 
 ```bash
 cd /path/to/solr-<version>/solr
@@ -37,7 +40,8 @@ You can confirm Solr is working by running:
 bin/solr start
 ```
 
-and making sure you see the Solr Admin interface at http://localhost:8983/solr/. You can stop Solr (but don't stop it now) with:
+and making sure you see the Solr Admin interface at http://localhost:8983/solr/.
+You can stop Solr (but don't stop it now) with:
 
 ```bash
 bin/solr stop
@@ -45,31 +49,51 @@ bin/solr stop
 
 # <a name="Solr-Basics"></a>**<p style="text-align: center;">Solr Basics</p>**
 
-Solr is a search platform, so we only really need to know how to do two things to function: **_(1)_** index data and **_(2)_** define a ranking model. Solr has a [REST](https://en.wikipedia.org/wiki/Representational_state_transfer)-like API, which means we'll be making changes with the [`curl`](https://curl.haxx.se/docs/manpage.html) command. To get going, let's first create a [core](https://lucene.apache.org/solr/guide/solr-cores-and-solr-xml.html) named `test`:
+Solr is a search platform, so we only really need to know how to do two things to function: **_(1)_** index data and **_(2)_** define a ranking model.
+Solr has a [REST](https://en.wikipedia.org/wiki/Representational_state_transfer)-like API, which means we'll be making changes with the [`curl`](https://curl.haxx.se/docs/manpage.html) command.
+To get going, let's first create a [core](https://lucene.apache.org/solr/guide/solr-cores-and-solr-xml.html) named `test`:
 
 ```bash
 bin/solr create -c test
 ```
 
-This seemingly simple command actually did a lot of stuff behind the scenes. Specifically, it defined a [schema](https://lucene.apache.org/solr/guide/documents-fields-and-schema-design.html#documents-fields-and-schema-design), which tells Solr how documents should be processed (think [tokenization](https://nlp.stanford.edu/IR-book/html/htmledition/tokenization-1.html), [stemming](https://nlp.stanford.edu/IR-book/html/htmledition/stemming-and-lemmatization-1.html), etc.) and searched (e.g., using the [tf-idf](https://en.wikipedia.org/wiki/Tf%E2%80%93idf) [vector space model](https://en.wikipedia.org/wiki/Vector_space_model)), and it set up a [configuration file](https://lucene.apache.org/solr/guide/configuring-solrconfig-xml.html), which specifies what libraries and handlers Solr will use. A core can be deleted with:
+This seemingly simple command actually did a lot of stuff behind the scenes.
+Specifically, it defined a [schema](https://lucene.apache.org/solr/guide/documents-fields-and-schema-design.html#documents-fields-and-schema-design), which tells Solr how documents should be processed (think [tokenization](https://nlp.stanford.edu/IR-book/html/htmledition/tokenization-1.html), [stemming](https://nlp.stanford.edu/IR-book/html/htmledition/stemming-and-lemmatization-1.html), etc.) and searched (e.g., using the [tf-idf](https://en.wikipedia.org/wiki/Tf%E2%80%93idf) [vector space model](https://en.wikipedia.org/wiki/Vector_space_model)), and it set up a [configuration file](https://lucene.apache.org/solr/guide/configuring-solrconfig-xml.html), which specifies what libraries and handlers Solr will use. A core can be deleted with:
 
 ```bash
 bin/solr delete -c test
 ```
 
-OK, let's add some documents. First download [this XML file of tweets](https://github.com/treygrainger/solr-in-action/blob/master/example-docs/ch6/tweets.xml) provided on the [Solr in Action](http://solrinaction.com) GitHub. Take a look inside the XML file. Notice how it's using an `<add>` tag to tell Solr to add several documents (denoted with `<doc>` tags) to the index. To actually index the tweets, we run:
+OK, let's add some documents.
+First download [this XML file of tweets](https://github.com/treygrainger/solr-in-action/blob/master/example-docs/ch6/tweets.xml) provided on the [Solr in Action](http://solrinaction.com) GitHub.
+Take a look inside the XML file.
+Notice how it's using an `<add>` tag to tell Solr to add several documents (denoted with `<doc>` tags) to the index.
+To actually index the tweets, we run:
 
 ```bash
 bin/post -c test /path/to/tweets.xml
 ```
 
-Now, if we go to http://localhost:8983/solr/ (you might have to refresh) and click on the "Core Selector" dropdown on the left hand side, we can select the `test` core. If we then click on the "Query" tab, the query interface will appear. If we click on the blue "Execute Query" button at the bottom, a JSON document containing information regarding the tweets we just indexed will be displayed. Congratulations, you just ran your first successful query! Specifically, you used the [`/select` RequestHandler](https://lucene.apache.org/solr/guide/requesthandlers-and-searchcomponents-in-solrconfig.html) to execute the query `*:*`. The `*:*` is a special syntax that tells Solr to [return everything](https://stackoverflow.com/questions/8800380/solr-vs-query-performance). The [Solr query syntax](https://lucene.apache.org/solr/guide/query-syntax-and-parsing.html) is not very intuitive, in my opinion, so it's something you'll just have to get used to.
+Now, if we go to http://localhost:8983/solr/ (you might have to refresh) and click on the "Core Selector" dropdown on the left hand side, we can select the `test` core.
+If we then click on the "Query" tab, the query interface will appear.
+If we click on the blue "Execute Query" button at the bottom, a JSON document containing information regarding the tweets we just indexed will be displayed.
+Congratulations, you just ran your first successful query!
+Specifically, you used the [`/select` RequestHandler](https://lucene.apache.org/solr/guide/requesthandlers-and-searchcomponents-in-solrconfig.html) to execute the query `*:*`.
+The `*:*` is a special syntax that tells Solr to [return everything](https://stackoverflow.com/questions/8800380/solr-vs-query-performance).
+The [Solr query syntax](https://lucene.apache.org/solr/guide/query-syntax-and-parsing.html) is not very intuitive, in my opinion, so it's something you'll just have to get used to.
 
 # <a name="Defining-Features"></a>**<p style="text-align: center;">Defining Features</p>**
 
-OK, now that we have a basic Solr instance up and running, let's define some features for our LTR system. Like all machine learning problems, effective feature engineering is critical to success. Standard features in modern LTR models include using multiple similarity measures (e.g., [cosine similarity](https://en.wikipedia.org/wiki/Cosine_similarity) of tf-idf vectors or [BM25](https://en.wikipedia.org/wiki/Okapi_BM25)) to compare multiple text fields (e.g., body, title), in addition to other text characteristics (e.g., length) and document characteristics (e.g., age, PageRank). A good starting point is [this list of features](https://www.microsoft.com/en-us/research/project/mslr/) put together by Microsoft Research for an academic data set. A list of some other commonly used features can be found on slide 32 of [these lecture notes](https://people.cs.umass.edu/~jpjiang/cs646/16_learning_to_rank.pdf).
+OK, now that we have a basic Solr instance up and running, let's define some features for our LTR system.
+Like all machine learning problems, effective feature engineering is critical to success.
+Standard features in modern LTR models include using multiple similarity measures (e.g., [cosine similarity](https://en.wikipedia.org/wiki/Cosine_similarity) of tf-idf vectors or [BM25](https://en.wikipedia.org/wiki/Okapi_BM25)) to compare multiple text fields (e.g., body, title), in addition to other text characteristics (e.g., length) and document characteristics (e.g., age, PageRank).
+A good starting point is [this list of features](https://www.microsoft.com/en-us/research/project/mslr/) put together by Microsoft Research for an academic data set.
+A list of some other commonly used features can be found on slide 32 of [these lecture notes](fall-lecture-16-learning-to-rank.pdf).
 
-To start off, we're going to modify `/path/to/solr-<version>/solr/server/solr/test/conf/managed-schema` so that it includes the text fields that we'll need for our model. First, we'll change the `text` field so that it is of the `text_general` type (which is already defined inside `managed-schema`). The `text_general` type will allow us to calculate BM25 similarities. Because the `text` field already exists (it was automatically created when we indexed the tweets), we need to use the `replace-field` command like so:
+To start off, we're going to modify `/path/to/solr-<version>/solr/server/solr/test/conf/managed-schema` so that it includes the text fields that we'll need for our model.
+First, we'll change the `text` field so that it is of the `text_general` type (which is already defined inside `managed-schema`).
+The `text_general` type will allow us to calculate BM25 similarities.
+Because the `text` field already exists (it was automatically created when we indexed the tweets), we need to use the `replace-field` command like so:
 
 ```bash
 curl -X POST -H 'Content-type:application/json' --data-binary '{
@@ -82,7 +106,8 @@ curl -X POST -H 'Content-type:application/json' --data-binary '{
 }' http://localhost:8983/solr/test/schema
 ```
 
-I encourage you to take a look inside `managed-schema` following each change so that you can get a sense for what's happening. Next, we're going to specify a `text_tfidf` type, which will allow us to calculate tf-idf cosine similarities:
+I encourage you to take a look inside `managed-schema` following each change so that you can get a sense for what's happening.
+Next, we're going to specify a `text_tfidf` type, which will allow us to calculate tf-idf cosine similarities:
 
 ```bash
 curl -X POST -H 'Content-type:application/json' --data-binary '{
@@ -148,7 +173,11 @@ bin/post -c test /path/to/tweets.xml
 
 # <a name="Learning-to-Rank"></a>**<p style="text-align: center;">Learning to Rank</p>**
 
-Now that our documents are properly indexed, let's build a LTR model. If you're new to LTR, I recommend checking out [this (long) paper](http://didawiki.di.unipi.it/lib/exe/fetch.php/magistraleinformatica/ir/ir13/1_-_learning_to_rank.pdf) by Tie-Yan Liu and [this textbook](https://www.springer.com/gp/book/9783642142666) also by Liu. If you're familiar with machine learning, the ideas shouldn't be too difficult to grasp. I also recommend checking out the [Solr documentation on LTR](https://lucene.apache.org/solr/guide/learning-to-rank.html), which I'll be linking to throughout this section. Enabling LTR in Solr first requires [making some changes](https://lucene.apache.org/solr/guide/learning-to-rank.html#LearningToRank-Installation) to `/path/to/solr-<version>/solr/server/solr/test/conf/solrconfig.xml`. Copy and paste the below text anywhere between the `<config>` and `</config>` tags (at the top and bottom of the file, respectively).
+Now that our documents are properly indexed, let's build a LTR model.
+If you're new to LTR, I recommend checking out [this (long) paper](http://didawiki.di.unipi.it/lib/exe/fetch.php/magistraleinformatica/ir/ir13/1_-_learning_to_rank.pdf) by Tie-Yan Liu and [this textbook](https://www.springer.com/gp/book/9783642142666) also by Liu.
+If you're familiar with machine learning, the ideas shouldn't be too difficult to grasp.
+I also recommend checking out the [Solr documentation on LTR](https://lucene.apache.org/solr/guide/learning-to-rank.html), which I'll be linking to throughout this section. Enabling LTR in Solr first requires [making some changes](https://lucene.apache.org/solr/guide/learning-to-rank.html#LearningToRank-Installation) to `/path/to/solr-<version>/solr/server/solr/test/conf/solrconfig.xml`.
+Copy and paste the below text anywhere between the `<config>` and `</config>` tags (at the top and bottom of the file, respectively).
 
 ```xml
 <lib dir="${solr.install.dir:../../../..}/contrib/ltr/lib/" regex=".*\.jar" />
@@ -180,7 +209,9 @@ and then restart it with the LTR plugin enabled:
 bin/solr start -Dsolr.ltr.enabled=true
 ```
 
-Next, we need to push the model features and the model specification to Solr. In Solr, [LTR features are defined using a JSON formatted file](https://lucene.apache.org/solr/guide/learning-to-rank.html#LearningToRank-Uploadingfeatures). For our model, we'll save the following features in `my_efi_features.json`:
+Next, we need to push the model features and the model specification to Solr.
+In Solr, [LTR features are defined using a JSON formatted file](https://lucene.apache.org/solr/guide/learning-to-rank.html#LearningToRank-Uploadingfeatures).
+For our model, we'll save the following features in `my_efi_features.json`:
 
 ```json
 [
@@ -223,11 +254,19 @@ Next, we need to push the model features and the model specification to Solr. In
 ]
 ```
 
-`store` tells Solr where to store the feature, `name` is the name of the feature, `class` specifies which [Java class will handle the feature](https://lucene.apache.org/solr/guide/learning-to-rank.html#LearningToRank-Featureengineering), and `params` provides additional information about the feature required by its Java class. In the case of a [`SolrFeature`](http://lucene.apache.org/solr/6_6_1/solr-ltr/org/apache/solr/ltr/feature/SolrFeature.html), you need to provide the query. `{!dismax qf=text_tfidf}${text_a}` tells Solr to search the `text_tfidf` field with the contents of `text_a` using the [`DisMaxQParser`](https://lucene.apache.org/solr/guide/the-dismax-query-parser.html). The reason we're using the DisMax parser instead of the seemingly more obvious [`FieldQParser`](https://lucene.apache.org/solr/guide/other-parsers.html#OtherParsers-FieldQueryParser) (e.g., `{!field f=text_tfidf}${text_a}`) is because the `FieldQParser` automatically converts multi-term queries to "phrases" (i.e., it converts something like "the cat in the hat" into, effectively, "the_cat_in_the_hat", rather than "the", "cat", "in", "the", "hat"). This `FieldQParser` behavior (which seems like a rather strange default to me) ended up [giving me quite a headache](https://issues.apache.org/jira/browse/SOLR-11386), but I eventually found a solution with `DisMaxQParser`.
+`store` tells Solr where to store the feature, `name` is the name of the feature, `class` specifies which [Java class will handle the feature](https://lucene.apache.org/solr/guide/learning-to-rank.html#LearningToRank-Featureengineering), and `params` provides additional information about the feature required by its Java class.
+In the case of a [`SolrFeature`](http://lucene.apache.org/solr/6_6_1/solr-ltr/org/apache/solr/ltr/feature/SolrFeature.html), you need to provide the query.
+`{!dismax qf=text_tfidf}${text_a}` tells Solr to search the `text_tfidf` field with the contents of `text_a` using the [`DisMaxQParser`](https://lucene.apache.org/solr/guide/the-dismax-query-parser.html).
+The reason we're using the DisMax parser instead of the seemingly more obvious [`FieldQParser`](https://lucene.apache.org/solr/guide/other-parsers.html#OtherParsers-FieldQueryParser) (e.g., `{!field f=text_tfidf}${text_a}`) is because the `FieldQParser` automatically converts multi-term queries to "phrases" (i.e., it converts something like "the cat in the hat" into, effectively, "the_cat_in_the_hat", rather than "the", "cat", "in", "the", "hat").
+This `FieldQParser` behavior (which seems like a rather strange default to me) ended up [giving me quite a headache](https://issues.apache.org/jira/browse/SOLR-11386), but I eventually found a solution with `DisMaxQParser`.
 
-`{!dismax qf='text text_tfidf'}${text}` tells Solr to search both the `text` and `text_tfidf` fields with the contents of `text` and then take the max of those two scores. While this feature doesn't really make sense in this context because we're already using similarities from both fields as features, it demonstrates how such a feature could be implemented. For example, imagine that the documents in your corpus are linked to, at most, five other sources of text data. It might make sense to incorporate that information during a search, and taking the max over multiple similarity scores is one way of doing that.
+`{!dismax qf='text text_tfidf'}${text}` tells Solr to search both the `text` and `text_tfidf` fields with the contents of `text` and then take the max of those two scores.
+While this feature doesn't really make sense in this context because we're already using similarities from both fields as features, it demonstrates how such a feature could be implemented.
+For example, imagine that the documents in your corpus are linked to, at most, five other sources of text data.
+It might make sense to incorporate that information during a search, and taking the max over multiple similarity scores is one way of doing that.
 
-Finally, [`OriginalScoreFeature`](http://lucene.apache.org/solr/6_6_1/solr-ltr/org/apache/solr/ltr/feature/OriginalScoreFeature.html) "returns the original score that the document had before performing the reranking". This feature is necessary for returning the results in their original ranking when extracting features (**note**: `OriginalScoreFeature` [is broken](https://issues.apache.org/jira/browse/SOLR-11164) on Solr versions prior to 7.1).
+Finally, [`OriginalScoreFeature`](http://lucene.apache.org/solr/6_6_1/solr-ltr/org/apache/solr/ltr/feature/OriginalScoreFeature.html) "returns the original score that the document had before performing the reranking".
+This feature is necessary for returning the results in their original ranking when extracting features (**note**: `OriginalScoreFeature` [is broken](https://issues.apache.org/jira/browse/SOLR-11164) on Solr versions prior to 7.1).
 
 To push the features to Solr, we run the following command:
 
@@ -269,7 +308,12 @@ Next, we'll save the following model specification in `my_efi_model.json`:
 }
 ```
 
-`store` specifies [where the features the model is using are stored](https://lucene.apache.org/solr/guide/learning-to-rank.html#LearningToRank-Lifecycle), `name` is the name of the model, `class` specifies which Java class will implement the model, `features` is a list of the model features, and `params` provides additional information required by the model's Java class. To start off with, we'll use the [`LinearModel`](https://lucene.apache.org/solr/6_6_1/solr-ltr/org/apache/solr/ltr/model/LinearModel.html), which simply takes a weighted sum of the feature values to generate a score. Here, we assign a weight of 0.0 to each feature except `original_score`, which is assigned a weight of 1.0. This weighting scheme will ensure the results are returned in their original order. To find  better weights, we'll need to extract training data from Solr. I'll go over this topic in more depth in the [RankNet section](#RankNet).
+`store` specifies [where the features the model is using are stored](https://lucene.apache.org/solr/guide/learning-to-rank.html#LearningToRank-Lifecycle), `name` is the name of the model, `class` specifies which Java class will implement the model, `features` is a list of the model features, and `params` provides additional information required by the model's Java class.
+To start off with, we'll use the [`LinearModel`](https://lucene.apache.org/solr/6_6_1/solr-ltr/org/apache/solr/ltr/model/LinearModel.html), which simply takes a weighted sum of the feature values to generate a score.
+Here, we assign a weight of 0.0 to each feature except `original_score`, which is assigned a weight of 1.0.
+This weighting scheme will ensure the results are returned in their original order.
+To find  better weights, we'll need to extract training data from Solr.
+I'll go over this topic in more depth in the [RankNet section](#RankNet).
 
 We can push the model to Solr with:
 
@@ -301,13 +345,27 @@ You should see something like:
   }}
 ```
 
-Referring back to the request, `q=historic north` is the query used to fetch the initial results (using BM25 in this case), which are then re-ranked with the LTR model. `df=text` specifies the default field for Solr to search. `rq` is where all of the LTR parameters are provided. `efi` stands for "[external feature information](https://lucene.apache.org/solr/guide/learning-to-rank.html#LearningToRank-ExternalFeatureInformation)", which allows you to specify additional inputs at query time. In this case, we're populating the `text_a` argument with the term `historic`, the `text_b` argument with the term `north`, and the `text` argument with the multi-term query `'historic north'` (note, this is not being treated as a "phrase"). `fl=id,score,[features]` tells Solr to include the `id`, `score`, and model features in the results. You can verify that the feature values are correct by performing the associated search in the "Query" interface of the Solr Admin UI. For example, typing `text_tfidf:historic` in the `q` text box and typing `score` in the `fl` text box and then clicking the "Execute Query" button should return a value of 0.35304558.
+Referring back to the request, `q=historic north` is the query used to fetch the initial results (using BM25 in this case), which are then re-ranked with the LTR model.
+`df=text` specifies the default field for Solr to search.
+`rq` is where all of the LTR parameters are provided.
+`efi` stands for "[external feature information](https://lucene.apache.org/solr/guide/learning-to-rank.html#LearningToRank-ExternalFeatureInformation)", which allows you to specify additional inputs at query time.
+In this case, we're populating the `text_a` argument with the term `historic`, the `text_b` argument with the term `north`, and the `text` argument with the multi-term query `'historic north'` (note, this is not being treated as a "phrase"). `fl=id,score,[features]` tells Solr to include the `id`, `score`, and model features in the results.
+You can verify that the feature values are correct by performing the associated search in the "Query" interface of the Solr Admin UI.
+For example, typing `text_tfidf:historic` in the `q` text box and typing `score` in the `fl` text box and then clicking the "Execute Query" button should return a value of 0.35304558.
 
 # <a name="RankNet"></a>**<p style="text-align: center;">RankNet</p>**
 
-For LTR systems, linear models are generally trained using what's called a "[pointwise](https://en.wikipedia.org/wiki/Learning_to_rank#Pointwise_approach)" approach, which is where documents are considered individually (i.e., the model asks, "Is this document relevant to the query or not?"); however, pointwise approaches are generally [not well-suited](https://www.quora.com/What-are-the-differences-between-pointwise-pairwise-and-listwise-approaches-to-Learning-to-Rank) for LTR problems. [RankNet](http://icml.cc/2015/wp-content/uploads/2015/06/icml_ranking.pdf) is a neural network that uses a "[pairwise](https://en.wikipedia.org/wiki/Learning_to_rank#Pairwise_approach)" approach, which is where documents with a known relative preference are considered in pairs (i.e., the model asks, "Is document A more relevant than document B for the query or not?"). RankNet is available in Solr [as of version 7.3](https://github.com/apache/lucene-solr/commit/c5938f79e540f81b6d61560d324b150a5efd7011) (you can verify your version of Solr includes RankNet by inspecting `/path/to/solr-<version>/solr/dist/solr-ltr-{version}-SNAPSHOT.jar` and looking for `NeuralNetworkModel.class` under `/org/apache/solr/ltr/model/`). [I've also implemented RankNet in Keras](https://github.com/airalcorn2/RankNet) for model training. It's worth noting that [LambdaMART](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/LambdaMART_Final.pdf) might be more appropriate for your particular search application. However, RankNet can be trained quickly on a GPU using Keras, which makes it a good solution for search problems where only one document is relevant to any given query. For a nice (technical) overview of RankNet, LambdaRank, and LambdaMART, see [this paper](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/MSR-TR-2010-82.pdf) by Chris Burges from (at the time) Microsoft Research.
+For LTR systems, linear models are generally trained using what's called a "[pointwise](https://en.wikipedia.org/wiki/Learning_to_rank#Pointwise_approach)" approach, which is where documents are considered individually (i.e., the model asks, "Is this document relevant to the query or not?"); however, pointwise approaches are generally [not well-suited](https://www.quora.com/What-are-the-differences-between-pointwise-pairwise-and-listwise-approaches-to-Learning-to-Rank) for LTR problems.
+[RankNet](http://icml.cc/2015/wp-content/uploads/2015/06/icml_ranking.pdf) is a neural network that uses a "[pairwise](https://en.wikipedia.org/wiki/Learning_to_rank#Pairwise_approach)" approach, which is where documents with a known relative preference are considered in pairs (i.e., the model asks, "Is document A more relevant than document B for the query or not?").
+RankNet is available in Solr [as of version 7.3](https://github.com/apache/lucene-solr/commit/c5938f79e540f81b6d61560d324b150a5efd7011) (you can verify your version of Solr includes RankNet by inspecting `/path/to/solr-<version>/solr/dist/solr-ltr-{version}-SNAPSHOT.jar` and looking for `NeuralNetworkModel.class` under `/org/apache/solr/ltr/model/`). [I've also implemented RankNet in Keras](https://github.com/airalcorn2/RankNet) for model training.
+It's worth noting that [LambdaMART](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/LambdaMART_Final.pdf) might be more appropriate for your particular search application.
+However, RankNet can be trained quickly on a GPU using Keras, which makes it a good solution for search problems where only one document is relevant to any given query.
+For a nice (technical) overview of RankNet, LambdaRank, and LambdaMART, see [this paper](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/MSR-TR-2010-82.pdf) by Chris Burges from (at the time) Microsoft Research.
 
-Unfortunately, the [suggested method](https://lucene.apache.org/solr/guide/learning-to-rank.html#extracting-features) of feature extraction in Solr [is painfully slow](http://mail-archives.apache.org/mod_mbox/lucene-solr-user/201710.mbox/%3CCAMVOmhGUHZ-HU=g6o4+oyxob=bcWxQAg2BvW0Yj_sj=1bP0RRQ@mail.gmail.com%3E) ([other Solr users seem to agree it could be faster](http://mail-archives.apache.org/mod_mbox/lucene-solr-user/201710.mbox/%3C1508833512139-0.post@n3.nabble.com%3E)). Even when making the requests in parallel, it took me almost three days to extract features for ~200,000 queries. I think a better approach might be to do something like [this](http://computergodzilla.blogspot.com/2015/01/calculate-cosine-similarity-using.html), where you index the queries and then calculate the similarities between the "documents" (which consist of the true documents and queries), but this is really something that should be baked into Solr. Anyway, here is some Python template code for extracting features from Solr using queries (**note**: this code cannot be run as is):
+Unfortunately, the [suggested method](https://lucene.apache.org/solr/guide/learning-to-rank.html#extracting-features) of feature extraction in Solr [is painfully slow](http://mail-archives.apache.org/mod_mbox/lucene-solr-user/201710.mbox/%3CCAMVOmhGUHZ-HU=g6o4+oyxob=bcWxQAg2BvW0Yj_sj=1bP0RRQ@mail.gmail.com%3E) ([other Solr users seem to agree it could be faster](http://mail-archives.apache.org/mod_mbox/lucene-solr-user/201710.mbox/%3C1508833512139-0.post@n3.nabble.com%3E)).
+Even when making the requests in parallel, it took me almost three days to extract features for ~200,000 queries.
+I think a better approach might be to do something like [this](http://computergodzilla.blogspot.com/2015/01/calculate-cosine-similarity-using.html), where you index the queries and then calculate the similarities between the "documents" (which consist of the true documents and queries), but this is really something that should be baked into Solr.
+Anyway, here is some Python template code for extracting features from Solr using queries (**note**: this code cannot be run as is):
 
 ```python
 import numpy as np
@@ -371,7 +429,8 @@ if add_data:
     np.save("{0}_rank.npy".format(q_id), np.array(results_ranks))
 ```
 
-We're now ready to train some models. To start off with, we'll pull in the data and evaluate the BM25 rankings on the entire data set.
+We're now ready to train some models.
+To start off with, we'll pull in the data and evaluate the BM25 rankings on the entire data set.
 
 ```python
 import glob
@@ -447,7 +506,9 @@ print("Top 5: {0}".format((new_ranks <= 5).sum() / n_test))
 print("Top 10: {0}".format((new_ranks <= 10).sum() / n_test))
 ```
 
-Now we can try out RankNet. First we'll assemble the training data so that each row consists of a relevant document vector concatenated with an irrelevant document vector (for a given query). Because we returned 50 rows in the feature extraction phase, each query will have 49 document pairs in the data set.
+Now we can try out RankNet.
+First we'll assemble the training data so that each row consists of a relevant document vector concatenated with an irrelevant document vector (for a given query).
+Because we returned 50 rows in the feature extraction phase, each query will have 49 document pairs in the data set.
 
 ```python
 Xs = []
